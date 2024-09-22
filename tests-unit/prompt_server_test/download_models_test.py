@@ -65,10 +65,12 @@ async def test_download_model_success(temp_dir):
     mock_open.return_value.__enter__.return_value = mock_file
     time_values = itertools.count(0, 0.1)
 
-    with patch('model_filemanager.create_model_path', return_value=('models/checkpoints/model.sft', 'model.sft')), \
-         patch('model_filemanager.check_file_exists', return_value=None), \
+    with patch('model_filemanager.download_models.create_model_path', return_value='models/checkpoints/model.sft'), \
+         patch('model_filemanager.download_models.check_file_exists', return_value=None), \
+         patch('model_filemanager.download_models.validate_filename', return_value=True), \
          patch('builtins.open', mock_open), \
-         patch('folder_paths.get_folder_paths', return_value=[temp_dir]), \
+         patch('model_filemanager.download_models.get_folder_paths', return_value=[temp_dir]), \
+         patch('os.rename', return_value=None), \
          patch('time.time', side_effect=time_values):  # Simulate time passing
 
         result = await download_model(
@@ -118,9 +120,10 @@ async def test_download_model_url_request_failure():
     mock_progress_callback = AsyncMock()
 
     # Mock the create_model_path function
-    with patch('model_filemanager.create_model_path', return_value='/mock/path/model.safetensors'), \
-         patch('model_filemanager.check_file_exists', return_value=None), \
-         patch('folder_paths.get_folder_paths', return_value=['mock_directory']):
+    with patch('model_filemanager.download_models.create_model_path', return_value='/mock/path/model.safetensors'), \
+         patch('model_filemanager.download_models.check_file_exists', return_value=None), \
+         patch('model_filemanager.download_models.validate_filename', return_value=True), \
+         patch('model_filemanager.download_models.get_folder_paths', return_value=['mock_directory']):
         # Call the function
         result = await download_model(
             mock_get,
@@ -185,7 +188,7 @@ async def test_download_model_invalid_folder_path():
     mock_make_request = AsyncMock()
     mock_progress_callback = AsyncMock()
 
-    with patch('folder_paths.get_folder_paths', return_value=['valid_path']):
+    with patch('model_filemanager.download_models.get_folder_paths', return_value=['valid_path']):
         result = await download_model(
             mock_make_request,
             'model.sft',
@@ -209,7 +212,7 @@ def test_create_model_path(tmp_path, monkeypatch):
     model_name = "test_model.sft"
     model_directory = "test_dir"
 
-    file_path = create_model_path(model_name, model_directory, mock_models_dir)
+    file_path = create_model_path(model_name, mock_models_dir / model_directory)
 
     assert file_path == str(mock_models_dir / model_directory / model_name)
     assert os.path.exists(os.path.dirname(file_path))
@@ -254,7 +257,8 @@ async def test_track_download_progress_no_content_length():
     mock_callback = AsyncMock()
     mock_open = MagicMock(return_value=MagicMock())
 
-    with patch('builtins.open', mock_open):
+    with patch('builtins.open', mock_open), \
+         patch('os.rename', return_value=None):
         result = await track_download_progress(
             mock_response, '/mock/path/model.sft', 'model.sft',
             mock_callback, interval=0.1
@@ -281,7 +285,8 @@ async def test_track_download_progress_interval():
     mock_time.side_effect = [i * 0.5 for i in range(30)]  # This should be enough for 10 chunks
 
     with patch('builtins.open', mock_open), \
-         patch('time.time', mock_time):
+         patch('time.time', mock_time), \
+         patch('os.rename', return_value=None):    
         await track_download_progress(
             mock_response, '/mock/path/model.sft', 'model.sft',
             mock_callback, interval=1.0
